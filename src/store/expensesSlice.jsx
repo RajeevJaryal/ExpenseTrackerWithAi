@@ -1,4 +1,8 @@
-import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
+import {
+  createSlice,
+  createAsyncThunk,
+  createSelector,
+} from "@reduxjs/toolkit";
 import firebaseAPI from "../api/firebase";
 
 const getUID = () => localStorage.getItem("uid");
@@ -15,7 +19,11 @@ export const fetchExpenses = createAsyncThunk(
     if (!data) return [];
 
     return Object.keys(data)
-      .map((k) => ({ id: k, ...data[k] }))
+      .map((k) => ({
+        id: k,
+        ...data[k],
+        money: Number(data[k].money) || 0,
+      }))
       .reverse();
   }
 );
@@ -26,12 +34,17 @@ export const addExpense = createAsyncThunk(
   async (expense) => {
     const uid = getUID();
 
+    const payload = {
+      ...expense,
+      money: Number(expense.money) || 0,
+    };
+
     const res = await firebaseAPI.post(
       `/expenses/${uid}.json`,
-      expense
+      payload
     );
 
-    return { id: res.data.name, ...expense };
+    return { id: res.data.name, ...payload };
   }
 );
 
@@ -55,18 +68,24 @@ export const editExpense = createAsyncThunk(
   async ({ id, updatedExpense }) => {
     const uid = getUID();
 
+    const payload = {
+      ...updatedExpense,
+      money: Number(updatedExpense.money) || 0,
+    };
+
     await firebaseAPI.put(
       `/expenses/${uid}/${id}.json`,
-      updatedExpense
+      payload
     );
 
-    return { id, ...updatedExpense };
+    return { id, ...payload };
   }
 );
 
 // ───────────────── SLICE ─────────────────
 const expensesSlice = createSlice({
   name: "expenses",
+
   initialState: {
     expenseData: [],
     loading: false,
@@ -94,6 +113,10 @@ const expensesSlice = createSlice({
         state.expenseData = action.payload;
       })
 
+      .addCase(fetchExpenses.rejected, (state) => {
+        state.loading = false;
+      })
+
       .addCase(addExpense.fulfilled, (state, action) => {
         state.expenseData.unshift(action.payload);
       })
@@ -106,120 +129,190 @@ const expensesSlice = createSlice({
 
       .addCase(editExpense.fulfilled, (state, action) => {
         state.expenseData = state.expenseData.map((e) =>
-          e.id === action.payload.id ? action.payload : e
+          e.id === action.payload.id
+            ? action.payload
+            : e
         );
       });
   },
 });
 
-export const { syncExpenses, setSyncing } =
-  expensesSlice.actions;
+export const {
+  syncExpenses,
+  setSyncing,
+} = expensesSlice.actions;
 
 export default expensesSlice.reducer;
 
-// ───────────────── SELECTORS ─────────────────
-export const selectAll = (s) =>
+// ───────────────── BASE SELECTOR ─────────────────
+const selectExpensesState = (s) =>
   s.expenses.expenseData;
+
+// ───────────────── SELECTORS ─────────────────
+export const selectAll = createSelector(
+  [selectExpensesState],
+  (expenses) => expenses
+);
 
 export const selectLoading = (s) =>
   s.expenses.loading;
 
-export const selectTotalAmount = (s) =>
-  s.expenses.expenseData.reduce(
-    (sum, e) => sum + Number(e.money),
-    0
+export const selectTotalAmount = createSelector(
+  [selectExpensesState],
+  (expenses) =>
+    expenses.reduce(
+      (sum, e) => sum + (Number(e.money) || 0),
+      0
+    )
+);
+
+export const selectByCategory = createSelector(
+  [selectExpensesState],
+  (expenses) =>
+    expenses.reduce((acc, e) => {
+      acc[e.category] =
+        (acc[e.category] || 0) +
+        (Number(e.money) || 0);
+
+      return acc;
+    }, {})
+);
+
+// ───────────────── MONTHLY TREND ─────────────────
+export const selectMonthlyTrend = createSelector(
+  [selectExpensesState],
+  (expenses) => {
+    const map = {};
+
+    expenses.forEach((e) => {
+      const d = new Date(
+        e.date || Date.now()
+      );
+
+      const key = `${d.getFullYear()}-${String(
+        d.getMonth() + 1
+      ).padStart(2, "0")}`;
+
+      map[key] =
+        (map[key] || 0) +
+        (Number(e.money) || 0);
+    });
+
+    return Object.entries(map)
+      .sort(([a], [b]) =>
+        a.localeCompare(b)
+      )
+      .slice(-6)
+      .map(([month, total]) => ({
+        month: month.slice(5),
+        total,
+      }));
+  }
+);
+
+// ───────────────── WEEKLY COMPARISON ─────────────────
+export const selectWeeklyComparison =
+  createSelector(
+    [selectExpensesState],
+    (expenses) => {
+      const now = new Date();
+
+      return [0, 1, 2, 3]
+        .map((w) => {
+          const start = new Date(now);
+          start.setDate(
+            now.getDate() - (w + 1) * 7
+          );
+
+          const end = new Date(now);
+          end.setDate(
+            now.getDate() - w * 7
+          );
+
+          const total = expenses
+            .filter((e) => {
+              const d = new Date(
+                e.date || Date.now()
+              );
+
+              return (
+                d >= start && d < end
+              );
+            })
+            .reduce(
+              (sum, e) =>
+                sum +
+                (Number(e.money) || 0),
+              0
+            );
+
+          return {
+            week:
+              w === 0
+                ? "This"
+                : `W-${w}`,
+            total,
+          };
+        })
+        .reverse();
+    }
   );
 
-export const selectByCategory = (s) =>
-  s.expenses.expenseData.reduce((acc, e) => {
-    acc[e.category] =
-      (acc[e.category] || 0) + Number(e.money);
-    return acc;
-  }, {});
+// ───────────────── FORECAST ─────────────────
+export const selectForecast =
+  createSelector(
+    [selectMonthlyTrend],
+    (trend) => {
+      if (trend.length < 2) return null;
 
-// Monthly Trend
-export const selectMonthlyTrend = (s) => {
-  const map = {};
+      const n = trend.length;
 
-  s.expenses.expenseData.forEach((e) => {
-    const d = new Date(e.date || Date.now());
+      const xs = trend.map(
+        (_, i) => i
+      );
 
-    const key = `${d.getFullYear()}-${String(
-      d.getMonth() + 1
-    ).padStart(2, "0")}`;
+      const ys = trend.map(
+        (t) => t.total
+      );
 
-    map[key] = (map[key] || 0) + Number(e.money);
-  });
+      const mx =
+        xs.reduce(
+          (a, b) => a + b,
+          0
+        ) / n;
 
-  return Object.entries(map)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .slice(-6)
-    .map(([month, total]) => ({
-      month: month.slice(5),
-      total,
-    }));
-};
+      const my =
+        ys.reduce(
+          (a, b) => a + b,
+          0
+        ) / n;
 
-// Weekly
-export const selectWeeklyComparison = (s) => {
-  const now = new Date();
-
-  const weeks = [0, 1, 2, 3]
-    .map((w) => {
-      const start = new Date(now);
-      start.setDate(now.getDate() - (w + 1) * 7);
-
-      const end = new Date(now);
-      end.setDate(now.getDate() - w * 7);
-
-      const total = s.expenses.expenseData
-        .filter((e) => {
-          const d = new Date(e.date || Date.now());
-          return d >= start && d < end;
-        })
-        .reduce(
-          (sum, e) => sum + Number(e.money),
+      const numerator =
+        xs.reduce(
+          (a, x, i) =>
+            a +
+            (x - mx) *
+              (ys[i] - my),
           0
         );
 
-      return {
-        week: `W-${w === 0 ? "This" : w}`,
-        total,
-      };
-    })
-    .reverse();
+      const denominator =
+        xs.reduce(
+          (a, x) =>
+            a + (x - mx) ** 2,
+          0
+        );
 
-  return weeks;
-};
+      const m =
+        denominator === 0
+          ? 0
+          : numerator /
+            denominator;
 
-// Forecast
-export const selectForecast = (s) => {
-  const trend = selectMonthlyTrend(s);
+      const b = my - m * mx;
 
-  if (trend.length < 2) return null;
-
-  const n = trend.length;
-  const xs = trend.map((_, i) => i);
-  const ys = trend.map((t) => t.total);
-
-  const mx =
-    xs.reduce((a, b) => a + b, 0) / n;
-
-  const my =
-    ys.reduce((a, b) => a + b, 0) / n;
-
-  const m =
-    xs.reduce(
-      (a, x, i) =>
-        a + (x - mx) * (ys[i] - my),
-      0
-    ) /
-    xs.reduce(
-      (a, x) => a + (x - mx) ** 2,
-      0
-    );
-
-  const b = my - m * mx;
-
-  return Math.round(m * n + b);
-};
+      return Math.round(
+        m * n + b
+      );
+    }
+  );
