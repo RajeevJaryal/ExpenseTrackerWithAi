@@ -21,6 +21,7 @@ import { logout } from "../../store/AuthReducer";
 import {
   deleteExpense,
   editExpense,
+  addExpense,
   selectAll,
   selectByCategory,
   selectMonthlyTrend,
@@ -49,6 +50,139 @@ const PIE_COLORS = [
   "#a78bfa",
   "#60a5fa",
 ];
+
+// ── QUICK SALARY ENTRY ──
+function QuickSalaryEntry({ dispatch }) {
+  const [amount, setAmount] = useState("");
+  const [desc, setDesc] = useState("");
+  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [toast, setToast] = useState("");
+
+  const showToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(""), 2500);
+  };
+
+  const handleAdd = () => {
+    if (!amount) return;
+    dispatch(
+      addExpense({
+        money: Number(amount),
+        description: desc.trim() || "Monthly Salary",
+        category: "Salary",
+        date,
+      })
+    );
+    showToast(`✅ Salary ₹${formatINR(amount)} added!`);
+    setAmount("");
+    setDesc("");
+    setDate(new Date().toISOString().split("T")[0]);
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.28 }}
+      className="card p-4 md:p-5 mb-5"
+      style={{
+        border: "1px solid rgba(52,211,153,.25)",
+        background:
+          "linear-gradient(135deg,rgba(52,211,153,.06),rgba(124,111,247,.04))",
+      }}
+    >
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-4">
+        <div
+          className="w-9 h-9 rounded-xl flex items-center justify-center text-base flex-shrink-0"
+          style={{ background: "rgba(52,211,153,.15)" }}
+        >
+          💼
+        </div>
+        <div>
+          <p
+            className="df font-black text-sm"
+            style={{ color: "var(--text)" }}
+          >
+            Quick Salary Entry
+          </p>
+          <p className="text-xs" style={{ color: "var(--text3)" }}>
+            Add your income in seconds
+          </p>
+        </div>
+      </div>
+
+      {/* Inputs row — stacks on mobile, row on sm+ */}
+      <div className="flex flex-col sm:flex-row gap-2 md:gap-3">
+        {/* Amount */}
+        <div className="relative sm:flex-1">
+          <span
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold"
+            style={{ color: "var(--text3)" }}
+          >
+            ₹
+          </span>
+          <input
+            className="inp pl-7 w-full"
+            type="number"
+            placeholder="Salary amount"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+          />
+        </div>
+
+        {/* Description */}
+        <input
+          className="inp sm:flex-1"
+          placeholder="Description (optional)"
+          value={desc}
+          onChange={(e) => setDesc(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+        />
+
+        {/* Date */}
+        <input
+          type="date"
+          className="inp sm:w-40"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+        />
+
+        {/* Submit */}
+        <button
+          onClick={handleAdd}
+          disabled={!amount}
+          className="py-2.5 px-5 rounded-xl font-semibold text-sm disabled:opacity-50 transition-all flex-shrink-0"
+          style={{
+            background: amount
+              ? "linear-gradient(135deg,#34d399,#059669)"
+              : "var(--surface2)",
+            color: amount ? "#fff" : "var(--text3)",
+            border: "none",
+          }}
+        >
+          + Add Salary
+        </button>
+      </div>
+
+      {/* Inline toast */}
+      <AnimatePresence>
+        {toast && (
+          <motion.p
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="text-xs mt-3 font-semibold"
+            style={{ color: "#34d399" }}
+          >
+            {toast}
+          </motion.p>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+}
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -85,11 +219,17 @@ export default function Dashboard() {
     const poll = async () => {
       setSyncing(true);
       try {
-        const res = await fetch(`${DB_URL}/expenses/${uid}.json?auth=${token}`);
+        const res = await fetch(
+          `${DB_URL}/expenses/${uid}.json?auth=${token}`
+        );
         const data = await res.json();
         if (data && typeof data === "object") {
           const arr = Object.keys(data)
-            .map((k) => ({ id: k, ...data[k], money: Number(data[k].money) || 0 }))
+            .map((k) => ({
+              id: k,
+              ...data[k],
+              money: Number(data[k].money) || 0,
+            }))
             .reverse();
           dispatch(syncExpenses(arr));
         } else {
@@ -114,28 +254,42 @@ export default function Dashboard() {
 
   // ── Computed stats ──
   const income = useMemo(
-    () => expenses.filter((e) => e.category === "Salary").reduce((s, e) => s + Number(e.money), 0),
+    () =>
+      expenses
+        .filter((e) => e.category === "Salary")
+        .reduce((s, e) => s + Number(e.money), 0),
     [expenses]
   );
   const spent = useMemo(
-    () => expenses.filter((e) => e.category !== "Salary").reduce((s, e) => s + Number(e.money), 0),
+    () =>
+      expenses
+        .filter((e) => e.category !== "Salary")
+        .reduce((s, e) => s + Number(e.money), 0),
     [expenses]
   );
   const balance = income - spent;
-  const savingRate = income > 0 ? Math.round(((income - spent) / income) * 100) : 0;
+  const savingRate =
+    income > 0 ? Math.round(((income - spent) / income) * 100) : 0;
 
   // ── Filtered + sorted list ──
   const filtered = useMemo(() => {
     let list = [...expenses];
     if (catFilter !== "All") list = list.filter((e) => e.category === catFilter);
-    if (dSearch) list = list.filter((e) => e.description.toLowerCase().includes(dSearch.toLowerCase()));
-    if (sortBy === "newest") list.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+    if (dSearch)
+      list = list.filter((e) =>
+        e.description.toLowerCase().includes(dSearch.toLowerCase())
+      );
+    if (sortBy === "newest")
+      list.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
     if (sortBy === "highest") list.sort((a, b) => b.money - a.money);
     if (sortBy === "lowest") list.sort((a, b) => a.money - b.money);
     return list;
   }, [expenses, catFilter, dSearch, sortBy]);
 
-  const categories = useMemo(() => ["All", ...new Set(expenses.map((e) => e.category))], [expenses]);
+  const categories = useMemo(
+    () => ["All", ...new Set(expenses.map((e) => e.category))],
+    [expenses]
+  );
 
   const pieData = useMemo(
     () => Object.entries(byCategory).map(([name, value]) => ({ name, value })),
@@ -143,7 +297,10 @@ export default function Dashboard() {
   );
 
   const budgetAlerts = useMemo(
-    () => Object.entries(budgetLimits).filter(([cat, limit]) => (byCategory[cat] || 0) > limit),
+    () =>
+      Object.entries(budgetLimits).filter(
+        ([cat, limit]) => (byCategory[cat] || 0) > limit
+      ),
     [budgetLimits, byCategory]
   );
 
@@ -157,11 +314,16 @@ export default function Dashboard() {
     setVLoad(true);
     try {
       await fetch(
-        `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${import.meta.env.VITE_FIREBASE_API_KEY}`,
+        `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${
+          import.meta.env.VITE_FIREBASE_API_KEY
+        }`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ requestType: "VERIFY_EMAIL", idToken: token }),
+          body: JSON.stringify({
+            requestType: "VERIFY_EMAIL",
+            idToken: token,
+          }),
         }
       );
       alert("Verification email sent!");
@@ -213,17 +375,25 @@ export default function Dashboard() {
           <div className="flex items-center gap-3">
             <div
               className="w-9 h-9 rounded-2xl btn flex items-center justify-center flex-shrink-0"
-              style={{ padding: 0, boxShadow: "0 4px 16px rgba(124,111,247,.4)" }}
+              style={{
+                padding: 0,
+                boxShadow: "0 4px 16px rgba(124,111,247,.4)",
+              }}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
                 <path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z" />
               </svg>
             </div>
             <div>
-              <p className="df font-black text-base leading-none" style={{ color: "var(--text)" }}>
+              <p
+                className="df font-black text-base leading-none"
+                style={{ color: "var(--text)" }}
+              >
                 Fin<span className="gt">AI</span>
               </p>
-              <p className="text-xs mt-0.5" style={{ color: "var(--text3)" }}>Smart Finance</p>
+              <p className="text-xs mt-0.5" style={{ color: "var(--text3)" }}>
+                Smart Finance
+              </p>
             </div>
           </div>
         </div>
@@ -236,38 +406,70 @@ export default function Dashboard() {
               onClick={() => setTab(item.key)}
               className="flex items-center gap-3 w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all text-left"
               style={{
-                background: tab === item.key ? "linear-gradient(135deg,rgba(124,111,247,.2),rgba(244,114,182,.1))" : "transparent",
-                color: tab === item.key ? "var(--violet)" : "var(--text2)",
-                border: tab === item.key ? "1px solid rgba(124,111,247,.25)" : "1px solid transparent",
+                background:
+                  tab === item.key
+                    ? "linear-gradient(135deg,rgba(124,111,247,.2),rgba(244,114,182,.1))"
+                    : "transparent",
+                color:
+                  tab === item.key ? "var(--violet)" : "var(--text2)",
+                border:
+                  tab === item.key
+                    ? "1px solid rgba(124,111,247,.25)"
+                    : "1px solid transparent",
               }}
             >
               <span className="text-base">{item.icon}</span>
               {item.label}
               {item.key === "ai" && (
-                <span className="ml-auto text-xs px-1.5 py-0.5 rounded-md font-bold"
-                  style={{ background: "linear-gradient(135deg,#7c6ff7,#f472b6)", color: "#fff" }}>
+                <span
+                  className="ml-auto text-xs px-1.5 py-0.5 rounded-md font-bold"
+                  style={{
+                    background:
+                      "linear-gradient(135deg,#7c6ff7,#f472b6)",
+                    color: "#fff",
+                  }}
+                >
                   NEW
                 </span>
               )}
             </button>
           ))}
 
-          <div className="mt-2 pt-2 border-t flex flex-col gap-1" style={{ borderColor: "var(--border)" }}>
+          <div
+            className="mt-2 pt-2 border-t flex flex-col gap-1"
+            style={{ borderColor: "var(--border)" }}
+          >
             <button
               onClick={() => navigate("/expense-form")}
               className="flex items-center gap-3 w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all"
-              style={{ background: "transparent", color: "var(--text2)", border: "1px solid transparent" }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text)")}
-              onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text2)")}
+              style={{
+                background: "transparent",
+                color: "var(--text2)",
+                border: "1px solid transparent",
+              }}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.color = "var(--text)")
+              }
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.color = "var(--text2)")
+              }
             >
               ➕ Add Expense
             </button>
             <button
               onClick={() => navigate("/complete-profile")}
               className="flex items-center gap-3 w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all"
-              style={{ background: "transparent", color: "var(--text2)", border: "1px solid transparent" }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text)")}
-              onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text2)")}
+              style={{
+                background: "transparent",
+                color: "var(--text2)",
+                border: "1px solid transparent",
+              }}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.color = "var(--text)")
+              }
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.color = "var(--text2)")
+              }
             >
               👤 Profile
             </button>
@@ -275,7 +477,10 @@ export default function Dashboard() {
         </nav>
 
         {/* Bottom user card */}
-        <div className="p-3 border-t" style={{ borderColor: "var(--border)" }}>
+        <div
+          className="p-3 border-t"
+          style={{ borderColor: "var(--border)" }}
+        >
           {premium && (
             <button
               onClick={() => dispatch(toggleTheme())}
@@ -288,22 +493,46 @@ export default function Dashboard() {
             <button
               onClick={() => downloadCSV(expenses)}
               className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold mb-2 transition-all"
-              style={{ background: "rgba(52,211,153,.1)", color: "#34d399", border: "1px solid rgba(52,211,153,.2)" }}
+              style={{
+                background: "rgba(52,211,153,.1)",
+                color: "#34d399",
+                border: "1px solid rgba(52,211,153,.2)",
+              }}
             >
               📥 Download CSV
             </button>
           )}
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl mb-2" style={{ background: "var(--surface2)" }}>
-            <div className="w-7 h-7 rounded-full btn flex-shrink-0 flex items-center justify-center text-xs font-bold" style={{ padding: 0 }}>
+          <div
+            className="flex items-center gap-2 px-3 py-2 rounded-xl mb-2"
+            style={{ background: "var(--surface2)" }}
+          >
+            <div
+              className="w-7 h-7 rounded-full btn flex-shrink-0 flex items-center justify-center text-xs font-bold"
+              style={{ padding: 0 }}
+            >
               {email?.[0]?.toUpperCase() || "U"}
             </div>
-            <p className="text-xs truncate flex-1" style={{ color: "var(--text2)" }}>{email || "User"}</p>
-            {syncing && <div className="w-1.5 h-1.5 rounded-full pdot flex-shrink-0" style={{ background: "#34d399" }} />}
+            <p
+              className="text-xs truncate flex-1"
+              style={{ color: "var(--text2)" }}
+            >
+              {email || "User"}
+            </p>
+            {syncing && (
+              <div
+                className="w-1.5 h-1.5 rounded-full pdot flex-shrink-0"
+                style={{ background: "#34d399" }}
+              />
+            )}
           </div>
           <button
             onClick={handleLogout}
             className="w-full py-2 rounded-xl text-xs font-semibold transition-all"
-            style={{ background: "rgba(248,113,113,.08)", color: "#f87171", border: "1px solid rgba(248,113,113,.2)" }}
+            style={{
+              background: "rgba(248,113,113,.08)",
+              color: "#f87171",
+              border: "1px solid rgba(248,113,113,.2)",
+            }}
           >
             Logout
           </button>
@@ -329,44 +558,87 @@ export default function Dashboard() {
               exit={{ x: "-100%" }}
               transition={{ type: "spring", damping: 28, stiffness: 300 }}
               className="md:hidden fixed top-0 left-0 bottom-0 z-50 w-72 flex flex-col border-r"
-              style={{ background: "var(--surface)", borderColor: "var(--border)" }}
+              style={{
+                background: "var(--surface)",
+                borderColor: "var(--border)",
+              }}
             >
               {/* Logo */}
-              <div className="p-5 border-b flex items-center justify-between" style={{ borderColor: "var(--border)" }}>
+              <div
+                className="p-5 border-b flex items-center justify-between"
+                style={{ borderColor: "var(--border)" }}
+              >
                 <div className="flex items-center gap-3">
                   <div
                     className="w-9 h-9 rounded-2xl btn flex items-center justify-center flex-shrink-0"
-                    style={{ padding: 0, boxShadow: "0 4px 16px rgba(124,111,247,.4)" }}
+                    style={{
+                      padding: 0,
+                      boxShadow: "0 4px 16px rgba(124,111,247,.4)",
+                    }}
                   >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
+                    <svg
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="white"
+                    >
                       <path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z" />
                     </svg>
                   </div>
                   <div>
-                    <p className="df font-black text-base leading-none" style={{ color: "var(--text)" }}>
+                    <p
+                      className="df font-black text-base leading-none"
+                      style={{ color: "var(--text)" }}
+                    >
                       Fin<span className="gt">AI</span>
                     </p>
-                    <p className="text-xs mt-0.5" style={{ color: "var(--text3)" }}>Smart Finance</p>
+                    <p
+                      className="text-xs mt-0.5"
+                      style={{ color: "var(--text3)" }}
+                    >
+                      Smart Finance
+                    </p>
                   </div>
                 </div>
                 <button
                   onClick={() => setMobileMenuOpen(false)}
                   className="w-8 h-8 rounded-xl flex items-center justify-center text-sm"
-                  style={{ background: "var(--surface2)", color: "var(--text2)" }}
+                  style={{
+                    background: "var(--surface2)",
+                    color: "var(--text2)",
+                  }}
                 >
                   ✕
                 </button>
               </div>
 
               {/* User row */}
-              <div className="px-4 py-3 border-b" style={{ borderColor: "var(--border)" }}>
-                <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl" style={{ background: "var(--surface2)" }}>
-                  <div className="w-8 h-8 rounded-full btn flex-shrink-0 flex items-center justify-center text-sm font-bold" style={{ padding: 0 }}>
+              <div
+                className="px-4 py-3 border-b"
+                style={{ borderColor: "var(--border)" }}
+              >
+                <div
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
+                  style={{ background: "var(--surface2)" }}
+                >
+                  <div
+                    className="w-8 h-8 rounded-full btn flex-shrink-0 flex items-center justify-center text-sm font-bold"
+                    style={{ padding: 0 }}
+                  >
                     {email?.[0]?.toUpperCase() || "U"}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold truncate" style={{ color: "var(--text)" }}>{email || "User"}</p>
-                    {syncing && <p className="text-xs" style={{ color: "#34d399" }}>● Syncing…</p>}
+                    <p
+                      className="text-sm font-semibold truncate"
+                      style={{ color: "var(--text)" }}
+                    >
+                      {email || "User"}
+                    </p>
+                    {syncing && (
+                      <p className="text-xs" style={{ color: "#34d399" }}>
+                        ● Syncing…
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -376,35 +648,62 @@ export default function Dashboard() {
                 {NAV_ITEMS.map((item) => (
                   <button
                     key={item.key}
-                    onClick={() => { setTab(item.key); setMobileMenuOpen(false); }}
+                    onClick={() => {
+                      setTab(item.key);
+                      setMobileMenuOpen(false);
+                    }}
                     className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-sm font-medium transition-all text-left"
                     style={{
-                      background: tab === item.key ? "linear-gradient(135deg,rgba(124,111,247,.2),rgba(244,114,182,.1))" : "transparent",
-                      color: tab === item.key ? "var(--violet)" : "var(--text2)",
-                      border: tab === item.key ? "1px solid rgba(124,111,247,.25)" : "1px solid transparent",
+                      background:
+                        tab === item.key
+                          ? "linear-gradient(135deg,rgba(124,111,247,.2),rgba(244,114,182,.1))"
+                          : "transparent",
+                      color:
+                        tab === item.key
+                          ? "var(--violet)"
+                          : "var(--text2)",
+                      border:
+                        tab === item.key
+                          ? "1px solid rgba(124,111,247,.25)"
+                          : "1px solid transparent",
                     }}
                   >
                     <span className="text-base">{item.icon}</span>
                     {item.label}
                     {item.key === "ai" && (
-                      <span className="ml-auto text-xs px-1.5 py-0.5 rounded-md font-bold"
-                        style={{ background: "linear-gradient(135deg,#7c6ff7,#f472b6)", color: "#fff" }}>
+                      <span
+                        className="ml-auto text-xs px-1.5 py-0.5 rounded-md font-bold"
+                        style={{
+                          background:
+                            "linear-gradient(135deg,#7c6ff7,#f472b6)",
+                          color: "#fff",
+                        }}
+                      >
                         NEW
                       </span>
                     )}
                   </button>
                 ))}
 
-                <div className="mt-2 pt-2 border-t flex flex-col gap-1" style={{ borderColor: "var(--border)" }}>
+                <div
+                  className="mt-2 pt-2 border-t flex flex-col gap-1"
+                  style={{ borderColor: "var(--border)" }}
+                >
                   <button
-                    onClick={() => { navigate("/expense-form"); setMobileMenuOpen(false); }}
+                    onClick={() => {
+                      navigate("/expense-form");
+                      setMobileMenuOpen(false);
+                    }}
                     className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-sm font-medium"
                     style={{ color: "var(--text2)" }}
                   >
                     ➕ Add Expense
                   </button>
                   <button
-                    onClick={() => { navigate("/complete-profile"); setMobileMenuOpen(false); }}
+                    onClick={() => {
+                      navigate("/complete-profile");
+                      setMobileMenuOpen(false);
+                    }}
                     className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-sm font-medium"
                     style={{ color: "var(--text2)" }}
                   >
@@ -414,7 +713,10 @@ export default function Dashboard() {
               </nav>
 
               {/* Bottom actions */}
-              <div className="p-3 border-t flex flex-col gap-2" style={{ borderColor: "var(--border)" }}>
+              <div
+                className="p-3 border-t flex flex-col gap-2"
+                style={{ borderColor: "var(--border)" }}
+              >
                 {premium && (
                   <button
                     onClick={() => dispatch(toggleTheme())}
@@ -427,7 +729,11 @@ export default function Dashboard() {
                   <button
                     onClick={() => downloadCSV(expenses)}
                     className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold"
-                    style={{ background: "rgba(52,211,153,.1)", color: "#34d399", border: "1px solid rgba(52,211,153,.2)" }}
+                    style={{
+                      background: "rgba(52,211,153,.1)",
+                      color: "#34d399",
+                      border: "1px solid rgba(52,211,153,.2)",
+                    }}
                   >
                     📥 Download CSV
                   </button>
@@ -435,7 +741,11 @@ export default function Dashboard() {
                 <button
                   onClick={handleLogout}
                   className="w-full py-2.5 rounded-xl text-sm font-semibold transition-all"
-                  style={{ background: "rgba(248,113,113,.08)", color: "#f87171", border: "1px solid rgba(248,113,113,.2)" }}
+                  style={{
+                    background: "rgba(248,113,113,.08)",
+                    color: "#f87171",
+                    border: "1px solid rgba(248,113,113,.2)",
+                  }}
                 >
                   Logout
                 </button>
@@ -450,7 +760,11 @@ export default function Dashboard() {
         {/* Top bar */}
         <div
           className="sticky top-0 z-40 flex items-center justify-between px-4 md:px-7 h-14 border-b"
-          style={{ background: "rgba(8,8,16,.85)", backdropFilter: "blur(20px)", borderColor: "var(--border)" }}
+          style={{
+            background: "rgba(8,8,16,.85)",
+            backdropFilter: "blur(20px)",
+            borderColor: "var(--border)",
+          }}
         >
           {/* Hamburger (mobile only) */}
           <div className="flex items-center gap-3">
@@ -459,11 +773,23 @@ export default function Dashboard() {
               style={{ color: "var(--text2)" }}
               onClick={() => setMobileMenuOpen(true)}
             >
-              <span className="block w-5 h-0.5 rounded-full" style={{ background: "var(--text2)" }} />
-              <span className="block w-5 h-0.5 rounded-full" style={{ background: "var(--text2)" }} />
-              <span className="block w-3.5 h-0.5 rounded-full" style={{ background: "var(--text2)" }} />
+              <span
+                className="block w-5 h-0.5 rounded-full"
+                style={{ background: "var(--text2)" }}
+              />
+              <span
+                className="block w-5 h-0.5 rounded-full"
+                style={{ background: "var(--text2)" }}
+              />
+              <span
+                className="block w-3.5 h-0.5 rounded-full"
+                style={{ background: "var(--text2)" }}
+              />
             </button>
-            <h2 className="df font-black text-sm md:text-lg" style={{ color: "var(--text)" }}>
+            <h2
+              className="df font-black text-sm md:text-lg"
+              style={{ color: "var(--text)" }}
+            >
               {NAV_ITEMS.find((n) => n.key === tab)?.icon}{" "}
               {NAV_ITEMS.find((n) => n.key === tab)?.label}
             </h2>
@@ -475,15 +801,26 @@ export default function Dashboard() {
                 onClick={handleVerify}
                 disabled={verifyLoad}
                 className="flex items-center gap-1.5 text-xs font-semibold px-2.5 md:px-3 py-1.5 rounded-xl"
-                style={{ background: "rgba(251,191,36,.1)", color: "#fbbf24", border: "1px solid rgba(251,191,36,.2)" }}
+                style={{
+                  background: "rgba(251,191,36,.1)",
+                  color: "#fbbf24",
+                  border: "1px solid rgba(251,191,36,.2)",
+                }}
               >
                 <span className="pdot">●</span>
-                <span className="hidden sm:inline">{verifyLoad ? "Sending…" : "Verify Email"}</span>
-                <span className="sm:hidden">{verifyLoad ? "…" : "Verify"}</span>
+                <span className="hidden sm:inline">
+                  {verifyLoad ? "Sending…" : "Verify Email"}
+                </span>
+                <span className="sm:hidden">
+                  {verifyLoad ? "…" : "Verify"}
+                </span>
               </button>
             )}
             {!premium && balance > 10000 && (
-              <button onClick={() => dispatch(activatePremium())} className="btn py-1.5 px-3 md:px-4 text-xs">
+              <button
+                onClick={() => dispatch(activatePremium())}
+                className="btn py-1.5 px-3 md:px-4 text-xs"
+              >
                 <span className="hidden sm:inline">⭐ Activate Premium</span>
                 <span className="sm:hidden">⭐ Premium</span>
               </button>
@@ -508,13 +845,25 @@ export default function Dashboard() {
                     initial={{ opacity: 0, scale: 0.97 }}
                     animate={{ opacity: 1, scale: 1 }}
                     className="rounded-2xl p-4 mb-5 flex items-start gap-3"
-                    style={{ background: "rgba(248,113,113,.08)", border: "1px solid rgba(248,113,113,.25)" }}
+                    style={{
+                      background: "rgba(248,113,113,.08)",
+                      border: "1px solid rgba(248,113,113,.25)",
+                    }}
                   >
                     <span className="text-lg">🚨</span>
                     <div>
-                      <p className="font-bold text-sm" style={{ color: "#f87171" }}>Budget Exceeded!</p>
-                      <p className="text-xs mt-1" style={{ color: "var(--text2)" }}>
-                        {budgetAlerts.map(([cat]) => cat).join(", ")} — over your set limits
+                      <p
+                        className="font-bold text-sm"
+                        style={{ color: "#f87171" }}
+                      >
+                        Budget Exceeded!
+                      </p>
+                      <p
+                        className="text-xs mt-1"
+                        style={{ color: "var(--text2)" }}
+                      >
+                        {budgetAlerts.map(([cat]) => cat).join(", ")} — over
+                        your set limits
                       </p>
                     </div>
                   </motion.div>
@@ -523,10 +872,35 @@ export default function Dashboard() {
                 {/* Stat cards — 2 col mobile, 4 col desktop */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-5">
                   {[
-                    { label: "Balance", value: balance, color: "#7c6ff7", icon: "💰", sub: `${expenses.length} transactions` },
-                    { label: "Income", value: income, color: "#34d399", icon: "↑", sub: "Salary entries" },
-                    { label: "Spent", value: spent, color: "#f472b6", icon: "↓", sub: "All expenses" },
-                    { label: "Saving Rate", value: savingRate, color: "#fbbf24", icon: "📈", sub: "of income saved", isPercent: true },
+                    {
+                      label: "Balance",
+                      value: balance,
+                      color: "#7c6ff7",
+                      icon: "💰",
+                      sub: `${expenses.length} transactions`,
+                    },
+                    {
+                      label: "Income",
+                      value: income,
+                      color: "#34d399",
+                      icon: "↑",
+                      sub: "Salary entries",
+                    },
+                    {
+                      label: "Spent",
+                      value: spent,
+                      color: "#f472b6",
+                      icon: "↓",
+                      sub: "All expenses",
+                    },
+                    {
+                      label: "Saving Rate",
+                      value: savingRate,
+                      color: "#fbbf24",
+                      icon: "📈",
+                      sub: "of income saved",
+                      isPercent: true,
+                    },
                   ].map((s, i) => (
                     <motion.div
                       key={s.label}
@@ -536,18 +910,39 @@ export default function Dashboard() {
                       className="card p-4 md:p-5"
                     >
                       <div className="flex justify-between items-start mb-2 md:mb-3">
-                        <span className="text-xs font-semibold" style={{ color: "var(--text2)" }}>{s.label}</span>
-                        <div className="w-7 h-7 md:w-8 md:h-8 rounded-xl flex items-center justify-center text-sm" style={{ background: `${s.color}18` }}>
+                        <span
+                          className="text-xs font-semibold"
+                          style={{ color: "var(--text2)" }}
+                        >
+                          {s.label}
+                        </span>
+                        <div
+                          className="w-7 h-7 md:w-8 md:h-8 rounded-xl flex items-center justify-center text-sm"
+                          style={{ background: `${s.color}18` }}
+                        >
                           {s.icon}
                         </div>
                       </div>
-                      <p className="df text-lg md:text-2xl font-black tracking-tight" style={{ color: s.color }}>
-                        {s.isPercent ? `${s.value}%` : `₹${formatINR(s.value)}`}
+                      <p
+                        className="df text-lg md:text-2xl font-black tracking-tight"
+                        style={{ color: s.color }}
+                      >
+                        {s.isPercent
+                          ? `${s.value}%`
+                          : `₹${formatINR(s.value)}`}
                       </p>
-                      <p className="text-xs mt-1" style={{ color: "var(--text3)" }}>{s.sub}</p>
+                      <p
+                        className="text-xs mt-1"
+                        style={{ color: "var(--text3)" }}
+                      >
+                        {s.sub}
+                      </p>
                     </motion.div>
                   ))}
                 </div>
+
+                {/* ── QUICK SALARY ENTRY ── */}
+                <QuickSalaryEntry dispatch={dispatch} />
 
                 {/* Forecast banner */}
                 {forecast && (
@@ -557,18 +952,30 @@ export default function Dashboard() {
                     transition={{ delay: 0.3 }}
                     className="rounded-2xl p-4 mb-5 flex items-center gap-3 md:gap-4"
                     style={{
-                      background: "linear-gradient(135deg,rgba(124,111,247,.12),rgba(244,114,182,.08))",
+                      background:
+                        "linear-gradient(135deg,rgba(124,111,247,.12),rgba(244,114,182,.08))",
                       border: "1px solid rgba(124,111,247,.2)",
                     }}
                   >
                     <span className="text-xl md:text-2xl">🔮</span>
                     <div className="flex-1 min-w-0">
-                      <p className="font-bold text-sm" style={{ color: "var(--text)" }}>Next Month Forecast</p>
-                      <p className="text-xs mt-0.5 hidden sm:block" style={{ color: "var(--text2)" }}>
+                      <p
+                        className="font-bold text-sm"
+                        style={{ color: "var(--text)" }}
+                      >
+                        Next Month Forecast
+                      </p>
+                      <p
+                        className="text-xs mt-0.5 hidden sm:block"
+                        style={{ color: "var(--text2)" }}
+                      >
                         Based on your spending trend (linear regression)
                       </p>
                     </div>
-                    <p className="df text-lg md:text-xl font-black flex-shrink-0" style={{ color: "var(--violet)" }}>
+                    <p
+                      className="df text-lg md:text-xl font-black flex-shrink-0"
+                      style={{ color: "var(--violet)" }}
+                    >
                       ₹{formatINR(forecast)}
                     </p>
                   </motion.div>
@@ -577,13 +984,22 @@ export default function Dashboard() {
                 {/* Transaction list */}
                 <div className="card p-4 md:p-5">
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="df font-black text-sm md:text-base" style={{ color: "var(--text)" }}>
+                    <h3
+                      className="df font-black text-sm md:text-base"
+                      style={{ color: "var(--text)" }}
+                    >
                       Transactions{" "}
-                      <span className="text-sm font-normal ml-1" style={{ color: "var(--text3)" }}>
+                      <span
+                        className="text-sm font-normal ml-1"
+                        style={{ color: "var(--text3)" }}
+                      >
                         ({filtered.length})
                       </span>
                     </h3>
-                    <button onClick={() => navigate("/expense-form")} className="btn py-2 px-3 md:px-4 text-xs">
+                    <button
+                      onClick={() => navigate("/expense-form")}
+                      className="btn py-2 px-3 md:px-4 text-xs"
+                    >
                       + Add
                     </button>
                   </div>
@@ -597,7 +1013,10 @@ export default function Dashboard() {
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                       />
-                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs" style={{ color: "var(--text3)" }}>
+                      <span
+                        className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs"
+                        style={{ color: "var(--text3)" }}
+                      >
                         🔍
                       </span>
                     </div>
@@ -617,9 +1036,18 @@ export default function Dashboard() {
                           onClick={() => setCatFilter(cat)}
                           className="px-2.5 md:px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all"
                           style={{
-                            borderColor: catFilter === cat ? "var(--violet)" : "var(--border)",
-                            background: catFilter === cat ? "rgba(124,111,247,.15)" : "var(--surface2)",
-                            color: catFilter === cat ? "var(--violet2)" : "var(--text2)",
+                            borderColor:
+                              catFilter === cat
+                                ? "var(--violet)"
+                                : "var(--border)",
+                            background:
+                              catFilter === cat
+                                ? "rgba(124,111,247,.15)"
+                                : "var(--surface2)",
+                            color:
+                              catFilter === cat
+                                ? "var(--violet2)"
+                                : "var(--text2)",
                           }}
                         >
                           {cat}
@@ -630,18 +1058,41 @@ export default function Dashboard() {
 
                   {loading && (
                     <div className="flex justify-center py-10">
-                      <svg className="spin w-7 h-7" viewBox="0 0 24 24" fill="none">
-                        <circle cx="12" cy="12" r="10" stroke="rgba(124,111,247,.3)" strokeWidth="3" />
-                        <path d="M12 2a10 10 0 0 1 10 10" stroke="var(--violet)" strokeWidth="3" strokeLinecap="round" />
+                      <svg
+                        className="spin w-7 h-7"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                      >
+                        <circle
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="rgba(124,111,247,.3)"
+                          strokeWidth="3"
+                        />
+                        <path
+                          d="M12 2a10 10 0 0 1 10 10"
+                          stroke="var(--violet)"
+                          strokeWidth="3"
+                          strokeLinecap="round"
+                        />
                       </svg>
                     </div>
                   )}
 
                   {!loading && filtered.length === 0 && (
-                    <div className="flex flex-col items-center py-14" style={{ color: "var(--text3)" }}>
+                    <div
+                      className="flex flex-col items-center py-14"
+                      style={{ color: "var(--text3)" }}
+                    >
                       <p className="text-4xl mb-3">📭</p>
-                      <p className="font-semibold text-sm">No transactions found</p>
-                      <button onClick={() => navigate("/expense-form")} className="btn mt-4 py-2 px-5 text-xs">
+                      <p className="font-semibold text-sm">
+                        No transactions found
+                      </p>
+                      <button
+                        onClick={() => navigate("/expense-form")}
+                        className="btn mt-4 py-2 px-5 text-xs"
+                      >
                         + Add first expense
                       </button>
                     </div>
@@ -671,34 +1122,56 @@ export default function Dashboard() {
                               <input
                                 className="inp py-1.5 text-xs flex-1"
                                 value={editItem.description}
-                                onChange={(e) => setEditItem({ ...editItem, description: e.target.value })}
+                                onChange={(e) =>
+                                  setEditItem({
+                                    ...editItem,
+                                    description: e.target.value,
+                                  })
+                                }
                               />
                               <input
                                 className="inp py-1.5 text-xs w-20 md:w-24"
                                 type="number"
                                 value={editItem.money}
-                                onChange={(e) => setEditItem({ ...editItem, money: e.target.value })}
+                                onChange={(e) =>
+                                  setEditItem({
+                                    ...editItem,
+                                    money: e.target.value,
+                                  })
+                                }
                               />
                             </div>
                           ) : (
                             <div className="flex-1 min-w-0">
-                              <p className="font-semibold text-sm truncate" style={{ color: "var(--text)" }}>
+                              <p
+                                className="font-semibold text-sm truncate"
+                                style={{ color: "var(--text)" }}
+                              >
                                 {item.description}
                               </p>
-                              <p className="text-xs mt-0.5" style={{ color: "var(--text3)" }}>
-                                {item.category}{item.date ? ` · ${item.date}` : ""}
+                              <p
+                                className="text-xs mt-0.5"
+                                style={{ color: "var(--text3)" }}
+                              >
+                                {item.category}
+                                {item.date ? ` · ${item.date}` : ""}
                               </p>
                             </div>
                           )}
 
                           <span
                             className="font-bold text-xs md:text-sm flex-shrink-0"
-                            style={{ color: item.category === "Salary" ? "#34d399" : "#f472b6" }}
+                            style={{
+                              color:
+                                item.category === "Salary"
+                                  ? "#34d399"
+                                  : "#f472b6",
+                            }}
                           >
-                            {item.category === "Salary" ? "+" : "-"}₹{formatINR(item.money)}
+                            {item.category === "Salary" ? "+" : "-"}₹
+                            {formatINR(item.money)}
                           </span>
 
-                          {/* On mobile: always visible. On desktop: hover */}
                           <div className="flex gap-1 md:gap-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                             {isEd ? (
                               <>
@@ -712,7 +1185,10 @@ export default function Dashboard() {
                                 <button
                                   onClick={() => setEditItem(null)}
                                   className="px-2 py-1 rounded-lg text-xs"
-                                  style={{ background: "var(--surface3)", color: "var(--text2)" }}
+                                  style={{
+                                    background: "var(--surface3)",
+                                    color: "var(--text2)",
+                                  }}
                                 >
                                   ✕
                                 </button>
@@ -722,14 +1198,22 @@ export default function Dashboard() {
                                 <button
                                   onClick={() => setEditItem({ ...item })}
                                   className="px-2 py-1 rounded-lg text-xs font-semibold"
-                                  style={{ background: "rgba(124,111,247,.15)", color: "var(--violet2)" }}
+                                  style={{
+                                    background: "rgba(124,111,247,.15)",
+                                    color: "var(--violet2)",
+                                  }}
                                 >
                                   ✏️
                                 </button>
                                 <button
-                                  onClick={() => dispatch(deleteExpense(item.id))}
+                                  onClick={() =>
+                                    dispatch(deleteExpense(item.id))
+                                  }
                                   className="px-2 py-1 rounded-lg text-xs font-semibold"
-                                  style={{ background: "rgba(248,113,113,.12)", color: "#f87171" }}
+                                  style={{
+                                    background: "rgba(248,113,113,.12)",
+                                    color: "#f87171",
+                                  }}
                                 >
                                   🗑
                                 </button>
@@ -753,25 +1237,49 @@ export default function Dashboard() {
                 exit={{ opacity: 0 }}
                 className="flex flex-col gap-5 md:gap-6"
               >
-                {/* 1-col mobile, 2-col desktop */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-6">
                   {/* Line chart */}
                   <div className="card p-4 md:p-5">
-                    <h3 className="df font-black text-sm mb-4" style={{ color: "var(--text)" }}>
+                    <h3
+                      className="df font-black text-sm mb-4"
+                      style={{ color: "var(--text)" }}
+                    >
                       Monthly Spending Trend
                     </h3>
                     {monthlyTrend.length < 2 ? (
-                      <p className="text-sm text-center py-8" style={{ color: "var(--text3)" }}>
-                        Add more expenses across different months to see the trend
+                      <p
+                        className="text-sm text-center py-8"
+                        style={{ color: "var(--text3)" }}
+                      >
+                        Add more expenses across different months to see the
+                        trend
                       </p>
                     ) : (
                       <ResponsiveContainer width="100%" height={200}>
                         <LineChart data={monthlyTrend}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                          <XAxis dataKey="month" tick={{ fill: "var(--text3)", fontSize: 10 }} axisLine={false} />
-                          <YAxis tick={{ fill: "var(--text3)", fontSize: 10 }} axisLine={false} tickFormatter={(v) => `₹${formatINR(v)}`} />
+                          <CartesianGrid
+                            strokeDasharray="3 3"
+                            stroke="var(--border)"
+                          />
+                          <XAxis
+                            dataKey="month"
+                            tick={{ fill: "var(--text3)", fontSize: 10 }}
+                            axisLine={false}
+                          />
+                          <YAxis
+                            tick={{ fill: "var(--text3)", fontSize: 10 }}
+                            axisLine={false}
+                            tickFormatter={(v) => `₹${formatINR(v)}`}
+                          />
                           <Tooltip content={<ChartTip />} />
-                          <Line type="monotone" dataKey="total" stroke="#7c6ff7" strokeWidth={2.5} dot={{ fill: "#7c6ff7", r: 4 }} activeDot={{ r: 6 }} />
+                          <Line
+                            type="monotone"
+                            dataKey="total"
+                            stroke="#7c6ff7"
+                            strokeWidth={2.5}
+                            dot={{ fill: "#7c6ff7", r: 4 }}
+                            activeDot={{ r: 6 }}
+                          />
                         </LineChart>
                       </ResponsiveContainer>
                     )}
@@ -779,22 +1287,62 @@ export default function Dashboard() {
 
                   {/* Pie chart */}
                   <div className="card p-4 md:p-5">
-                    <h3 className="df font-black text-sm mb-4" style={{ color: "var(--text)" }}>
+                    <h3
+                      className="df font-black text-sm mb-4"
+                      style={{ color: "var(--text)" }}
+                    >
                       Category Breakdown
                     </h3>
                     {pieData.length === 0 ? (
-                      <p className="text-sm text-center py-8" style={{ color: "var(--text3)" }}>No data yet</p>
+                      <p
+                        className="text-sm text-center py-8"
+                        style={{ color: "var(--text3)" }}
+                      >
+                        No data yet
+                      </p>
                     ) : (
                       <ResponsiveContainer width="100%" height={200}>
                         <PieChart>
-                          <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="value" nameKey="name" paddingAngle={3}>
-                            {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                          <Pie
+                            data={pieData}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={50}
+                            outerRadius={80}
+                            dataKey="value"
+                            nameKey="name"
+                            paddingAngle={3}
+                          >
+                            {pieData.map((_, i) => (
+                              <Cell
+                                key={i}
+                                fill={PIE_COLORS[i % PIE_COLORS.length]}
+                              />
+                            ))}
                           </Pie>
                           <Tooltip
                             formatter={(v) => `₹${formatINR(v)}`}
-                            contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, color: "var(--text)" }}
+                            contentStyle={{
+                              background: "var(--surface)",
+                              border: "1px solid var(--border)",
+                              borderRadius: 12,
+                              color: "var(--text)",
+                            }}
                           />
-                          <Legend iconType="circle" iconSize={8} formatter={(v) => <span style={{ color: "var(--text2)", fontSize: 10 }}>{v}</span>} />
+                          <Legend
+                            iconType="circle"
+                            iconSize={8}
+                            formatter={(v) => (
+                              <span
+                                style={{
+                                  color: "var(--text2)",
+                                  fontSize: 10,
+                                }}
+                              >
+                                {v}
+                              </span>
+                            )}
+                          />
                         </PieChart>
                       </ResponsiveContainer>
                     )}
@@ -803,18 +1351,49 @@ export default function Dashboard() {
 
                 {/* Bar chart */}
                 <div className="card p-4 md:p-5">
-                  <h3 className="df font-black text-sm mb-4" style={{ color: "var(--text)" }}>Weekly Comparison</h3>
+                  <h3
+                    className="df font-black text-sm mb-4"
+                    style={{ color: "var(--text)" }}
+                  >
+                    Weekly Comparison
+                  </h3>
                   <ResponsiveContainer width="100%" height={180}>
                     <BarChart data={weeklyComp} barSize={32}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                      <XAxis dataKey="week" tick={{ fill: "var(--text3)", fontSize: 10 }} axisLine={false} />
-                      <YAxis tick={{ fill: "var(--text3)", fontSize: 10 }} axisLine={false} tickFormatter={(v) => `₹${formatINR(v)}`} />
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke="var(--border)"
+                        vertical={false}
+                      />
+                      <XAxis
+                        dataKey="week"
+                        tick={{ fill: "var(--text3)", fontSize: 10 }}
+                        axisLine={false}
+                      />
+                      <YAxis
+                        tick={{ fill: "var(--text3)", fontSize: 10 }}
+                        axisLine={false}
+                        tickFormatter={(v) => `₹${formatINR(v)}`}
+                      />
                       <Tooltip content={<ChartTip />} />
-                      <Bar dataKey="total" fill="url(#barGrad)" radius={[8, 8, 0, 0]} />
+                      <Bar
+                        dataKey="total"
+                        fill="url(#barGrad)"
+                        radius={[8, 8, 0, 0]}
+                      />
                       <defs>
-                        <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
+                        <linearGradient
+                          id="barGrad"
+                          x1="0"
+                          y1="0"
+                          x2="0"
+                          y2="1"
+                        >
                           <stop offset="0%" stopColor="#7c6ff7" />
-                          <stop offset="100%" stopColor="#f472b6" stopOpacity={0.7} />
+                          <stop
+                            offset="100%"
+                            stopColor="#f472b6"
+                            stopOpacity={0.7}
+                          />
                         </linearGradient>
                       </defs>
                     </BarChart>
@@ -826,16 +1405,30 @@ export default function Dashboard() {
                   <div className="card p-4 md:p-5 flex items-center gap-4 md:gap-5">
                     <div className="text-3xl md:text-4xl">🔮</div>
                     <div className="flex-1 min-w-0">
-                      <p className="df font-black text-sm md:text-base" style={{ color: "var(--text)" }}>
+                      <p
+                        className="df font-black text-sm md:text-base"
+                        style={{ color: "var(--text)" }}
+                      >
                         Next Month Predicted Spending
                       </p>
-                      <p className="text-xs md:text-sm mt-1" style={{ color: "var(--text2)" }}>
-                        Linear regression on your last {monthlyTrend.length} months
+                      <p
+                        className="text-xs md:text-sm mt-1"
+                        style={{ color: "var(--text2)" }}
+                      >
+                        Linear regression on your last {monthlyTrend.length}{" "}
+                        months
                       </p>
                     </div>
                     <div className="text-right flex-shrink-0">
-                      <p className="df text-xl md:text-3xl font-black gt">₹{formatINR(forecast)}</p>
-                      <p className="text-xs mt-1" style={{ color: "var(--text3)" }}>Estimated</p>
+                      <p className="df text-xl md:text-3xl font-black gt">
+                        ₹{formatINR(forecast)}
+                      </p>
+                      <p
+                        className="text-xs mt-1"
+                        style={{ color: "var(--text3)" }}
+                      >
+                        Estimated
+                      </p>
                     </div>
                   </div>
                 )}
@@ -847,9 +1440,13 @@ export default function Dashboard() {
 
             {/* ══════════ AI TAB ══════════ */}
             {tab === "ai" && (
-              <AITab expenses={expenses} byCategory={byCategory} balance={balance} forecast={forecast} />
+              <AITab
+                expenses={expenses}
+                byCategory={byCategory}
+                balance={balance}
+                forecast={forecast}
+              />
             )}
-
           </AnimatePresence>
         </div>
       </main>
@@ -857,14 +1454,21 @@ export default function Dashboard() {
       {/* ── MOBILE BOTTOM NAV ── */}
       <nav
         className="md:hidden fixed bottom-0 left-0 right-0 z-40 flex items-stretch justify-around border-t h-16"
-        style={{ background: "var(--surface)", borderColor: "var(--border)", paddingBottom: "env(safe-area-inset-bottom)" }}
+        style={{
+          background: "var(--surface)",
+          borderColor: "var(--border)",
+          paddingBottom: "env(safe-area-inset-bottom)",
+        }}
       >
         {NAV_ITEMS.map((item) => (
           <button
             key={item.key}
             onClick={() => setTab(item.key)}
             className="flex-1 flex flex-col items-center justify-center gap-0.5 relative border-none"
-            style={{ color: tab === item.key ? "var(--violet)" : "var(--text3)" }}
+            style={{
+              color:
+                tab === item.key ? "var(--violet)" : "var(--text3)",
+            }}
           >
             {tab === item.key && (
               <motion.div
@@ -874,11 +1478,17 @@ export default function Dashboard() {
               />
             )}
             <span className="text-xl leading-none">{item.icon}</span>
-            <span className="text-[10px] font-semibold leading-none">{item.label}</span>
+            <span className="text-[10px] font-semibold leading-none">
+              {item.label}
+            </span>
             {item.key === "ai" && (
               <span
                 className="absolute top-1.5 right-[calc(50%-20px)] text-[8px] px-1 rounded font-bold leading-tight"
-                style={{ background: "linear-gradient(135deg,#7c6ff7,#f472b6)", color: "#fff" }}
+                style={{
+                  background:
+                    "linear-gradient(135deg,#7c6ff7,#f472b6)",
+                  color: "#fff",
+                }}
               >
                 NEW
               </span>
@@ -894,17 +1504,21 @@ export default function Dashboard() {
           <span className="text-[10px] font-semibold leading-none">Add</span>
         </button>
       </nav>
-
     </div>
   );
 }
+
 import { setBudget, removeBudget } from "../../store/budgetSlice";
+
 // ── BUDGET TAB ──
 function BudgetTab({ byCategory }) {
   const dispatch = useDispatch();
   const { limits } = useSelector((s) => s.budget);
- 
-  const CATS = ["Food", "Petrol", "Entertainment", "Shopping", "Health", "Bills", "Travel", "Education", "Other"];
+
+  const CATS = [
+    "Food","Petrol","Entertainment","Shopping",
+    "Health","Bills","Travel","Education","Other",
+  ];
   const [sel, setSel] = useState("Food");
   const [amt, setAmt] = useState("");
 
@@ -924,16 +1538,29 @@ function BudgetTab({ byCategory }) {
     >
       {/* Set budget */}
       <div className="card p-4 md:p-5">
-        <h3 className="df font-black text-sm md:text-base mb-4" style={{ color: "var(--text)" }}>
+        <h3
+          className="df font-black text-sm md:text-base mb-4"
+          style={{ color: "var(--text)" }}
+        >
           Set Budget Limits
         </h3>
-        {/* Stack on mobile, row on desktop */}
         <div className="flex flex-col md:flex-row gap-3">
-          <select className="inp w-full md:flex-1" value={sel} onChange={(e) => setSel(e.target.value)}>
-            {CATS.map((c) => <option key={c}>{c}</option>)}
+          <select
+            className="inp w-full md:flex-1"
+            value={sel}
+            onChange={(e) => setSel(e.target.value)}
+          >
+            {CATS.map((c) => (
+              <option key={c}>{c}</option>
+            ))}
           </select>
           <div className="relative w-full md:flex-1">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold" style={{ color: "var(--text3)" }}>₹</span>
+            <span
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold"
+              style={{ color: "var(--text3)" }}
+            >
+              ₹
+            </span>
             <input
               className="inp pl-7 w-full"
               type="number"
@@ -942,17 +1569,25 @@ function BudgetTab({ byCategory }) {
               onChange={(e) => setAmt(e.target.value)}
             />
           </div>
-          <button onClick={save} className="btn px-5 w-full md:w-auto">Set Limit</button>
+          <button onClick={save} className="btn px-5 w-full md:w-auto">
+            Set Limit
+          </button>
         </div>
       </div>
 
       {/* Budget vs actual */}
       <div className="card p-4 md:p-5">
-        <h3 className="df font-black text-sm md:text-base mb-4" style={{ color: "var(--text)" }}>
+        <h3
+          className="df font-black text-sm md:text-base mb-4"
+          style={{ color: "var(--text)" }}
+        >
           Budget vs Actual
         </h3>
         {Object.keys(limits).length === 0 ? (
-          <p className="text-sm py-6 text-center" style={{ color: "var(--text3)" }}>
+          <p
+            className="text-sm py-6 text-center"
+            style={{ color: "var(--text3)" }}
+          >
             Set budget limits above to track spending
           </p>
         ) : (
@@ -967,35 +1602,65 @@ function BudgetTab({ byCategory }) {
                   <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
                     <div className="flex items-center gap-2">
                       <span>{catMeta.icon}</span>
-                      <span className="font-semibold text-sm" style={{ color: "var(--text)" }}>{cat}</span>
+                      <span
+                        className="font-semibold text-sm"
+                        style={{ color: "var(--text)" }}
+                      >
+                        {cat}
+                      </span>
                       {over && (
-                        <span className="text-xs px-2 py-0.5 rounded-full font-bold"
-                          style={{ background: "rgba(248,113,113,.15)", color: "#f87171" }}>
+                        <span
+                          className="text-xs px-2 py-0.5 rounded-full font-bold"
+                          style={{
+                            background: "rgba(248,113,113,.15)",
+                            color: "#f87171",
+                          }}
+                        >
                           Over!
                         </span>
                       )}
                     </div>
                     <div className="flex items-center gap-2 md:gap-3">
-                      <span className="text-sm font-bold" style={{ color: over ? "#f87171" : catMeta.color }}>
+                      <span
+                        className="text-sm font-bold"
+                        style={{ color: over ? "#f87171" : catMeta.color }}
+                      >
                         ₹{formatINR(actual)}
                       </span>
-                      <span className="text-xs" style={{ color: "var(--text3)" }}>/ ₹{formatINR(limit)}</span>
+                      <span
+                        className="text-xs"
+                        style={{ color: "var(--text3)" }}
+                      >
+                        / ₹{formatINR(limit)}
+                      </span>
                       <button
                         onClick={() => dispatch(removeBudget(cat))}
                         className="text-xs"
-                        style={{ color: "var(--text3)", background: "none", border: "none", cursor: "pointer" }}
+                        style={{
+                          color: "var(--text3)",
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                        }}
                       >
                         ✕
                       </button>
                     </div>
                   </div>
-                  <div className="h-2 rounded-full overflow-hidden" style={{ background: "var(--surface2)" }}>
+                  <div
+                    className="h-2 rounded-full overflow-hidden"
+                    style={{ background: "var(--surface2)" }}
+                  >
                     <motion.div
                       initial={{ width: 0 }}
                       animate={{ width: `${pct}%` }}
                       transition={{ duration: 0.8, ease: "easeOut" }}
                       className="h-full rounded-full"
-                      style={{ background: over ? "#f87171" : `linear-gradient(90deg, ${catMeta.color}, ${catMeta.color}aa)` }}
+                      style={{
+                        background: over
+                          ? "#f87171"
+                          : `linear-gradient(90deg, ${catMeta.color}, ${catMeta.color}aa)`,
+                      }}
                     />
                   </div>
                 </div>
@@ -1013,8 +1678,6 @@ function AITab({ expenses, byCategory, balance, forecast }) {
   const [prompt, setPrompt] = useState("");
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
-
-  const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 
   const context = `
 User's expense data summary:
@@ -1038,53 +1701,36 @@ User's expense data summary:
   ];
 
   const ask = async (q) => {
-  const userMsg = q || prompt;
-  if (!userMsg?.trim()) return;
+    const userMsg = q || prompt;
+    if (!userMsg?.trim()) return;
 
-  setMessages((m) => [...m, { role: "user", content: userMsg }]);
-  setPrompt("");
-  setLoading(true);
+    setMessages((m) => [...m, { role: "user", content: userMsg }]);
+    setPrompt("");
+    setLoading(true);
 
-  try {
-    const res = await fetch("/api/gemini", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        prompt: userMsg,
-        context: context,
-      }),
-    });
+    try {
+      const res = await fetch("/api/gemini", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: userMsg, context }),
+      });
 
-    // ✅ HANDLE ERROR RESPONSE FIRST
-    if (!res.ok) {
-      throw new Error(`API Error: ${res.status}`);
+      if (!res.ok) throw new Error(`API Error: ${res.status}`);
+
+      const data = await res.json();
+      const reply = data?.reply || "⚠️ No response from AI";
+
+      setMessages((m) => [...m, { role: "assistant", content: reply }]);
+    } catch (err) {
+      console.error(err);
+      setMessages((m) => [
+        ...m,
+        { role: "assistant", content: "⚠️ Server error. Please try again." },
+      ]);
+    } finally {
+      setLoading(false);
     }
-
-    const data = await res.json();
-
-    const reply =
-      data?.reply || "⚠️ No response from AI";
-
-    setMessages((m) => [
-      ...m,
-      { role: "assistant", content: reply },
-    ]);
-  } catch (err) {
-    console.error(err);
-
-    setMessages((m) => [
-      ...m,
-      {
-        role: "assistant",
-        content: "⚠️ Server error. Please try again.",
-      },
-    ]);
-  } finally {
-    setLoading(false); 
-  }
-};
+  };
 
   return (
     <motion.div
@@ -1138,7 +1784,7 @@ User's expense data summary:
                   background:
                     m.role === "user" ? "var(--grad)" : "var(--surface2)",
                   color: m.role === "user" ? "#fff" : "var(--text)",
-                  whiteSpace: "pre-wrap", // ⭐ KEY FIX
+                  whiteSpace: "pre-wrap",
                 }}
               >
                 {m.content}
