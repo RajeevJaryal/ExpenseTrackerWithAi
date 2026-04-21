@@ -50,7 +50,7 @@ Rules:
     );
 
     const data = await response.json();
-
+    
     return res.status(200).json({
       reply:
         data?.candidates?.[0]?.content?.parts?.[0]?.text ||
