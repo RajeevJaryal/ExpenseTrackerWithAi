@@ -1019,10 +1019,15 @@ function AITab({ expenses, byCategory, balance, forecast }) {
   const context = `
 User's expense data summary:
 - Total balance: ₹${balance}
-- Spending by category: ${Object.entries(byCategory || {}).map(([k, v]) => `${k}: ₹${v}`).join(", ")}
+- Spending by category: ${Object.entries(byCategory || {})
+    .map(([k, v]) => `${k}: ₹${v}`)
+    .join(", ")}
 - Total transactions: ${expenses?.length || 0}
 - Next month forecast: ₹${forecast || "N/A"}
-- Recent expenses: ${(expenses || []).slice(0, 5).map((e) => `${e.category} ₹${e.money} (${e.description})`).join("; ")}
+- Recent expenses: ${(expenses || [])
+    .slice(0, 5)
+    .map((e) => `${e.category} ₹${e.money} (${e.description})`)
+    .join("; ")}
 `;
 
   const QUICK = [
@@ -1037,7 +1042,10 @@ User's expense data summary:
     if (!userMsg?.trim()) return;
 
     if (!API_KEY) {
-      setMessages((m) => [...m, { role: "assistant", content: "❌ Missing Gemini API key" }]);
+      setMessages((m) => [
+        ...m,
+        { role: "assistant", content: "❌ Missing Gemini API key" },
+      ]);
       return;
     }
 
@@ -1052,24 +1060,49 @@ User's expense data summary:
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            contents: [{
-              parts: [{
-                text: `You are a friendly AI financial advisor.\n\nAnalyze user data:\n${context}\n\nUser question:\n${userMsg}\n\nRules:\n- Be concise (max 200 words)\n- Use emojis naturally\n- Give actionable financial advice`,
-              }],
-            }],
+            contents: [
+              {
+                parts: [
+                  {
+                    text: `
+You are a friendly AI financial advisor.
+
+Analyze user data:
+${context}
+
+User question:
+${userMsg}
+
+Rules:
+- Be concise (max 200 words)
+- Use emojis naturally
+- Give actionable financial advice
+- Use bullet points and line breaks for readability
+                    `,
+                  },
+                ],
+              },
+            ],
           }),
         }
       );
 
-      const raw = await res.text();
-      let data;
-      try { data = JSON.parse(raw); } catch { throw new Error("Invalid response from Gemini API"); }
+      const data = await res.json();
 
-      const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || "⚠️ No response from AI";
+      const reply =
+        data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+        "⚠️ No response from AI";
+
       setMessages((m) => [...m, { role: "assistant", content: reply }]);
     } catch (err) {
       console.error(err);
-      setMessages((m) => [...m, { role: "assistant", content: "⚠️ API error. Check console for details." }]);
+      setMessages((m) => [
+        ...m,
+        {
+          role: "assistant",
+          content: "⚠️ API error. Check console for details.",
+        },
+      ]);
     }
 
     setLoading(false);
@@ -1084,25 +1117,19 @@ User's expense data summary:
       className="flex flex-col gap-4 md:gap-5"
     >
       {/* Header */}
-      <div
-        className="card p-4 md:p-5 flex items-center gap-3 md:gap-4"
-        style={{
-          background: "linear-gradient(135deg,rgba(124,111,247,.12),rgba(244,114,182,.08))",
-          border: "1px solid rgba(124,111,247,.2)",
-        }}
-      >
+      <div className="card p-4 md:p-5 flex items-center gap-3 md:gap-4">
         <div className="text-3xl md:text-4xl">🤖</div>
         <div>
-          <h3 className="df font-black text-sm md:text-base" style={{ color: "var(--text)" }}>
+          <h3 className="df font-black text-sm md:text-base">
             AI Financial Advisor
           </h3>
-          <p className="text-xs md:text-sm mt-0.5" style={{ color: "var(--text2)" }}>
+          <p className="text-xs md:text-sm mt-0.5">
             Powered by Google Gemini · Free AI insights
           </p>
         </div>
       </div>
 
-      {/* Quick prompts — 1 col mobile, 2 col desktop */}
+      {/* Quick prompts */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3">
         {QUICK.map((q) => (
           <button
@@ -1117,33 +1144,33 @@ User's expense data summary:
 
       {/* Chat */}
       {messages.length > 0 && (
-        <div className="card p-4 md:p-5 flex flex-col gap-3 md:gap-4 max-h-80 md:max-h-96 overflow-y-auto">
+        <div className="card p-4 md:p-5 flex flex-col gap-3 max-h-96 overflow-y-auto">
           {messages.map((m, i) => (
             <motion.div
               key={i}
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
+              className={`flex ${
+                m.role === "user" ? "justify-end" : "justify-start"
+              }`}
             >
               <div
-                className="max-w-[85%] md:max-w-[80%] rounded-2xl px-3 md:px-4 py-2.5 md:py-3 text-xs md:text-sm"
+                className="max-w-[85%] rounded-2xl px-3 md:px-4 py-2.5 md:py-3 text-xs md:text-sm"
                 style={{
-                  background: m.role === "user" ? "var(--grad)" : "var(--surface2)",
+                  background:
+                    m.role === "user" ? "var(--grad)" : "var(--surface2)",
                   color: m.role === "user" ? "#fff" : "var(--text)",
+                  whiteSpace: "pre-wrap", // ⭐ KEY FIX
                 }}
               >
                 {m.content}
               </div>
             </motion.div>
           ))}
+
           {loading && (
-            <div className="flex items-center gap-2" style={{ color: "var(--text2)" }}>
-              <span className="text-xs">Thinking</span>
-              <span className="flex gap-1">
-                {[0, 1, 2].map((i) => (
-                  <span key={i} className="w-1.5 h-1.5 rounded-full pdot" style={{ background: "var(--violet)", animationDelay: `${i * 0.2}s` }} />
-                ))}
-              </span>
+            <div style={{ color: "var(--text2)" }}>
+              <span className="text-xs">Thinking...</span>
             </div>
           )}
         </div>
@@ -1161,7 +1188,7 @@ User's expense data summary:
         <button
           onClick={() => ask()}
           disabled={!prompt.trim() || loading}
-          className="btn px-4 md:px-5 flex-shrink-0 text-sm"
+          className="btn px-4 md:px-5"
         >
           {loading ? "…" : "Ask →"}
         </button>

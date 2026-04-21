@@ -28,7 +28,10 @@ const Loader = () => (
 
 // Protected route wrapper
 function Protected({ children }) {
-  const token = useSelector((s) => s.auth.token);
+  const { token, loading } = useSelector((s) => s.auth);
+
+  if (loading) return <Loader />; // IMPORTANT FIX
+
   return token ? children : <Navigate to="/" replace />;
 }
 
