@@ -1038,75 +1038,53 @@ User's expense data summary:
   ];
 
   const ask = async (q) => {
-    const userMsg = q || prompt;
-    if (!userMsg?.trim()) return;
+  const userMsg = q || prompt;
+  if (!userMsg?.trim()) return;
 
-    if (!API_KEY) {
-      setMessages((m) => [
-        ...m,
-        { role: "assistant", content: "❌ Missing Gemini API key" },
-      ]);
-      return;
+  setMessages((m) => [...m, { role: "user", content: userMsg }]);
+  setPrompt("");
+  setLoading(true);
+
+  try {
+    const res = await fetch("/api/gemini", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        prompt: userMsg,
+        context: context,
+      }),
+    });
+
+    // ✅ HANDLE ERROR RESPONSE FIRST
+    if (!res.ok) {
+      throw new Error(`API Error: ${res.status}`);
     }
 
-    setMessages((m) => [...m, { role: "user", content: userMsg }]);
-    setPrompt("");
-    setLoading(true);
+    const data = await res.json();
 
-    try {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=${API_KEY}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  {
-                    text: `
-You are a friendly AI financial advisor.
+    const reply =
+      data?.reply || "⚠️ No response from AI";
 
-Analyze user data:
-${context}
+    setMessages((m) => [
+      ...m,
+      { role: "assistant", content: reply },
+    ]);
+  } catch (err) {
+    console.error(err);
 
-User question:
-${userMsg}
-
-Rules:
-- Be concise (max 200 words)
-- Use emojis naturally
-- Give actionable financial advice
-- Use bullet points and line breaks for readability
-                    `,
-                  },
-                ],
-              },
-            ],
-          }),
-        }
-      );
-
-      const data = await res.json();
-
-      const reply =
-        data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-        "⚠️ No response from AI";
-
-      setMessages((m) => [...m, { role: "assistant", content: reply }]);
-    } catch (err) {
-      console.error(err);
-      setMessages((m) => [
-        ...m,
-        {
-          role: "assistant",
-          content: "⚠️ API error. Check console for details.",
-        },
-      ]);
-    }
-
-    setLoading(false);
-  };
+    setMessages((m) => [
+      ...m,
+      {
+        role: "assistant",
+        content: "⚠️ Server error. Please try again.",
+      },
+    ]);
+  } finally {
+    setLoading(false); 
+  }
+};
 
   return (
     <motion.div
